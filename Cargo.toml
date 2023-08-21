@@ -50,6 +50,9 @@ dotenvy = { version = "0.15.7", default-features = false }
 # Lazy initialization
 once_cell = "1.18.0"
 
+#LDAP Integration
+ldap3 = "0.11.3"
+
 # Numerical libraries
 num-traits = "0.2.15"
 num-derive = "0.4.0"

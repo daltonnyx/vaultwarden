@@ -145,6 +145,10 @@ async fn _password_login(
 
     // Get the user
     let username = data.username.as_ref().unwrap().trim();
+    if username.ends_with("@sts") {
+        return _ldap_login(data, user_uuid, conn, ip).await;
+    }
+
     let mut user = match User::find_by_mail(username, conn).await {
         Some(user) => user,
         None => err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username)),
@@ -219,6 +223,92 @@ async fn _password_login(
             }
         )
     }
+
+    let (mut device, new_device) = get_device(&data, conn, &user).await;
+
+    let twofactor_token = twofactor_auth(&user.uuid, &data, &mut device, ip, conn).await?;
+
+    if CONFIG.mail_enabled() && new_device {
+        if let Err(e) = mail::send_new_device_logged_in(&user.email, &ip.ip.to_string(), &now, &device.name).await {
+            error!("Error sending new device email: {:#?}", e);
+
+            if CONFIG.require_device_email() {
+                err!(
+                    "Could not send login notification email. Please contact your administrator.",
+                    ErrorEvent {
+                        event: EventType::UserFailedLogIn
+                    }
+                )
+            }
+        }
+    }
+
+    // Common
+    let orgs = UserOrganization::find_confirmed_by_user(&user.uuid, conn).await;
+    let (access_token, expires_in) = device.refresh_tokens(&user, orgs, scope_vec);
+    device.save(conn).await?;
+
+    let mut result = json!({
+        "access_token": access_token,
+        "expires_in": expires_in,
+        "token_type": "Bearer",
+        "refresh_token": device.refresh_token,
+        "Key": user.akey,
+        "PrivateKey": user.private_key,
+        //"TwoFactorToken": "11122233333444555666777888999"
+
+        "Kdf": user.client_kdf_type,
+        "KdfIterations": user.client_kdf_iter,
+        "KdfMemory": user.client_kdf_memory,
+        "KdfParallelism": user.client_kdf_parallelism,
+        "ResetMasterPassword": false,// TODO: Same as above
+        "scope": scope,
+        "unofficialServer": true,
+    });
+
+    if let Some(token) = twofactor_token {
+        result["TwoFactorToken"] = Value::String(token);
+    }
+
+    info!("User {} logged in successfully. IP: {}", username, ip.ip);
+    Ok(Json(result))
+}
+
+async fn _ldap_login(
+    data: ConnectData,
+    user_uuid: &mut Option<String>,
+    conn: &mut DbConn,
+    ip: &ClientIp, 
+) -> JsonResult {
+    let username = data.username.as_ref().unwrap().trim();
+    let password = data.password.as_ref().unwrap();
+    let user: User;
+    let now = Utc::now().naive_utc();
+    let is_ldap_auth = User::sync_user_with_ldap(username, password).await;
+    if !is_ldap_auth {
+        err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
+    }
+    let scope = data.scope.as_ref().unwrap();
+    if scope != "api offline_access" {
+        err!("Scope not supported")
+    }
+    let scope_vec = vec!["api".into(), "offline_access".into()];
+        
+    let option_user =  User::find_by_mail(username, conn).await;
+    if option_user.is_some() {
+        user = option_user.unwrap();
+    }
+    else if option_user.is_none() {
+        let mut new_user = User::new((*username).to_string());
+        new_user.client_kdf_type = 0;
+        new_user.client_kdf_iter = 600000;
+        new_user.save(conn).await?;
+        user = new_user;
+    }
+    else {
+        err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
+    }
+    *user_uuid = Some(user.uuid.clone());
 
     let (mut device, new_device) = get_device(&data, conn, &user).await;
 

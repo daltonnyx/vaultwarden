@@ -1,5 +1,6 @@
 use chrono::{Duration, NaiveDateTime, Utc};
 use serde_json::Value;
+use ldap3::LdapConnAsync;
 
 use crate::crypto;
 use crate::CONFIG;
@@ -140,6 +141,25 @@ impl User {
             &self.password_hash,
             self.password_iterations as u32,
         )
+    }
+
+    pub async fn sync_user_with_ldap(username: &str, password: &String) -> bool {
+        let (conn, mut ldap) = match LdapConnAsync::new("ldap://10.30.20.5:389").await {
+            Ok((conn, ldap)) => (conn, ldap),
+            Err(e) => {
+                warn!("Error connecting to ldap: {}", e);
+                return false
+            },
+        };
+        ldap3::drive!(conn);
+        let ldap_username = username.replace("@sts", "");
+        let result = ldap.simple_bind(&ldap_username, password).await;
+        let mut is_authenticated = false;
+        if !result.is_err() {
+            is_authenticated = true;
+        }
+        let _ = ldap.unbind().await;
+        return is_authenticated;
     }
 
     pub fn check_valid_recovery_code(&self, recovery_code: &str) -> bool {
