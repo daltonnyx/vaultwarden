@@ -153,7 +153,7 @@ impl User {
         };
         ldap3::drive!(conn);
         let ldap_username = username.replace("@sts", "");
-        let result = ldap.simple_bind(&ldap_username, password).await;
+        let result = ldap.simple_bind(&ldap_username, password).await.unwrap().success();
         let mut is_authenticated = false;
         if !result.is_err() {
             is_authenticated = true;
