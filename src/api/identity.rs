@@ -17,7 +17,7 @@ use crate::{
     auth::{generate_organization_api_key_login_claims, ClientHeaders, ClientIp},
     db::{models::*, DbConn},
     error::MapResult,
-    mail, util, CONFIG,
+    mail, util, CONFIG, ldap
 };
 
 pub fn routes() -> Vec<Route> {
@@ -145,7 +145,7 @@ async fn _password_login(
 
     // Get the user
     let username = data.username.as_ref().unwrap().trim();
-    if username.ends_with("@sts") {
+    if !username.contains("@") {
         return _ldap_login(data, user_uuid, conn, ip).await;
     }
 
@@ -284,7 +284,7 @@ async fn _ldap_login(
     let password = data.password.as_ref().unwrap();
     let user: User;
     let now = Utc::now().naive_utc();
-    let is_ldap_auth = User::sync_user_with_ldap(username, password).await;
+    let is_ldap_auth = ldap::sync_user_with_ldap(username, password).await;
     if !is_ldap_auth {
         err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
     }

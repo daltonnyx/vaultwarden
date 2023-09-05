@@ -166,6 +166,11 @@ argon2 = "0.5.0"
 # Reading a password from the cli for generating the Argon2id ADMIN_TOKEN
 rpassword = "7.2.0"
 
+pbkdf2 = { version = "0.12", features = ["simple"] }
+rand_core = { version = "0.6", features = ["std"] }
+hex-literal = "0.4.1"
+sha2 = "0.10.7"
+crypto = "0.5.1"
 [patch.crates-io]
 rocket = { git = 'https://github.com/SergioBenitez/Rocket', rev = 'ce441b5f46fdf5cd99cb32b8b8638835e4c2a5fa' } # v0.5 branch
 # rocket_ws = { git = 'https://github.com/SergioBenitez/Rocket', rev = 'ce441b5f46fdf5cd99cb32b8b8638835e4c2a5fa' } # v0.5 branch

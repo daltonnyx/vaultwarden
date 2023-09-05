@@ -80,6 +80,7 @@ mod crypto;
 mod db;
 mod mail;
 mod ratelimit;
+mod ldap;
 mod util;
 
 pub use config::CONFIG;

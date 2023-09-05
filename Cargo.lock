@@ -578,6 +578,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crypto"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf1e6e5492f8f0830c37f301f6349e0dac8b2466e4fe89eef90e9eef906cd046"
+dependencies = [
+ "crypto-common",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1175,6 +1184,12 @@ name = "hermit-abi"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "443144c8cdadd93ebf52ddb4056d257f5b52c04d3c804e657d19eb73fc33668b"
+
+[[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
 name = "hmac"
@@ -1991,6 +2006,18 @@ name = "paste"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4b27ab7be369122c218afc2079489cdcb4b517c0a3fc386ff11e1fedfcc2b35"
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
+dependencies = [
+ "digest",
+ "hmac",
+ "password-hash",
+ "sha2",
+]
 
 [[package]]
 name = "pear"
@@ -3458,6 +3485,7 @@ dependencies = [
  "chrono-tz",
  "cookie 0.16.2",
  "cookie_store 0.19.1",
+ "crypto",
  "dashmap",
  "data-encoding",
  "data-url",
@@ -3470,6 +3498,7 @@ dependencies = [
  "futures",
  "governor",
  "handlebars",
+ "hex-literal",
  "html5gum",
  "job_scheduler_ng",
  "jsonwebtoken",
@@ -3483,9 +3512,11 @@ dependencies = [
  "once_cell",
  "openssl",
  "paste",
+ "pbkdf2",
  "percent-encoding",
  "pico-args",
  "rand",
+ "rand_core",
  "regex",
  "reqwest",
  "ring",
@@ -3496,6 +3527,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "syslog",
  "time",
  "tokio",

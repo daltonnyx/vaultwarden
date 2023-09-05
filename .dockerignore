@@ -34,7 +34,7 @@ docker/**
 !docker/start.sh
 
 # Web vault
-web-vault
+# web-vault
 
 # Vaultwarden Resources
 resources
