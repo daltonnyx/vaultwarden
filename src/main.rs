@@ -78,9 +78,9 @@ mod config;
 mod crypto;
 #[macro_use]
 mod db;
+mod ldap;
 mod mail;
 mod ratelimit;
-mod ldap;
 mod util;
 
 use crate::api::purge_auth_requests;

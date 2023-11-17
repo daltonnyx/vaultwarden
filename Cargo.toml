@@ -13,7 +13,7 @@ publish = false
 build = "build.rs"
 
 [features]
-# default = ["sqlite"]
+default = ["sqlite"]
 # Empty to keep compatibility, prefer to set USE_SYSLOG=true
 enable_syslog = []
 mysql = ["diesel/mysql", "diesel_migrations/mysql"]
@@ -42,7 +42,9 @@ syslog = "6.1.0"
 # Logging
 log = "0.4.20"
 fern = { version = "0.6.2", features = ["syslog-6"] }
-tracing = { version = "0.1.37", features = ["log"] } # Needed to have lettre and webauthn-rs trace logging to work
+tracing = { version = "0.1.37", features = [
+  "log",
+] } # Needed to have lettre and webauthn-rs trace logging to work
 
 # A `dotenv` implementation for Rust
 dotenvy = { version = "0.15.7", default-features = false }
@@ -58,20 +60,30 @@ num-traits = "0.2.16"
 num-derive = "0.4.0"
 
 # Web framework
-rocket = { version = "0.5.0-rc.3", features = ["tls", "json"], default-features = false }
+rocket = { version = "0.5.0-rc.3", features = [
+  "tls",
+  "json",
+], default-features = false }
 # rocket_ws = { version ="0.1.0-rc.3" }
 rocket_ws = { git = 'https://github.com/SergioBenitez/Rocket', rev = "ce441b5f46fdf5cd99cb32b8b8638835e4c2a5fa" } # v0.5 branch
 
 # WebSockets libraries
 tokio-tungstenite = "0.19.0"
-rmpv = "1.0.1" # MessagePack library
+rmpv = "1.0.1"               # MessagePack library
 
 # Concurrent HashMap used for WebSocket messaging and favicons
 dashmap = "5.5.3"
 
 # Async futures
 futures = "0.3.28"
-tokio = { version = "1.32.0", features = ["rt-multi-thread", "fs", "io-util", "parking_lot", "time", "signal"] }
+tokio = { version = "1.32.0", features = [
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "parking_lot",
+  "time",
+  "signal",
+] }
 
 # A generic serialization/deserialization framework
 serde = { version = "1.0.188", features = ["derive"] }
@@ -93,7 +105,10 @@ ring = "0.16.20"
 uuid = { version = "1.4.1", features = ["v4"] }
 
 # Date and time libraries
-chrono = { version = "0.4.28", features = ["clock", "serde"], default-features = false }
+chrono = { version = "0.4.28", features = [
+  "clock",
+  "serde",
+], default-features = false }
 chrono-tz = "0.8.3"
 time = "0.3.28"
 
@@ -110,7 +125,9 @@ jsonwebtoken = "8.3.0"
 totp-lite = "2.0.0"
 
 # Yubico Library
-yubico = { version = "0.11.0", features = ["online-tokio"], default-features = false }
+yubico = { version = "0.11.0", features = [
+  "online-tokio",
+], default-features = false }
 
 # WebAuthn libraries
 webauthn-rs = "0.3.2"
@@ -119,7 +136,16 @@ webauthn-rs = "0.3.2"
 url = "2.4.1"
 
 # Email libraries
-lettre = { version = "0.10.4", features = ["smtp-transport", "sendmail-transport", "builder", "serde", "tokio1-native-tls", "hostname", "tracing", "tokio1"], default-features = false }
+lettre = { version = "0.10.4", features = [
+  "smtp-transport",
+  "sendmail-transport",
+  "builder",
+  "serde",
+  "tokio1-native-tls",
+  "hostname",
+  "tracing",
+  "tokio1",
+], default-features = false }
 percent-encoding = "2.3.0" # URL encoding library used for URL's in the emails
 email_address = "0.2.4"
 
@@ -127,11 +153,25 @@ email_address = "0.2.4"
 handlebars = { version = "4.3.7", features = ["dir_source"] }
 
 # HTTP client (Used for favicons, version check, DUO and HIBP API)
-reqwest = { version = "0.11.20", features = ["stream", "json", "deflate", "gzip", "brotli", "socks", "cookies", "trust-dns", "native-tls-alpn"] }
+reqwest = { version = "0.11.20", features = [
+  "stream",
+  "json",
+  "deflate",
+  "gzip",
+  "brotli",
+  "socks",
+  "cookies",
+  "trust-dns",
+  "native-tls-alpn",
+] }
 
 # Favicon extraction libraries
 html5gum = "0.5.7"
-regex = { version = "1.9.4", features = ["std", "perf", "unicode-perl"], default-features = false }
+regex = { version = "1.9.4", features = [
+  "std",
+  "perf",
+  "unicode-perl",
+], default-features = false }
 data-url = "0.3.0"
 bytes = "1.4.0"
 
@@ -157,7 +197,9 @@ semver = "1.0.18"
 
 # Allow overriding the default memory allocator
 # Mainly used for the musl builds, since the default musl malloc is very slow
-mimalloc = { version = "0.1.38", features = ["secure"], default-features = false, optional = true }
+mimalloc = { version = "0.1.38", features = [
+  "secure",
+], default-features = false, optional = true }
 which = "4.4.0"
 
 # Argon2 library with support for the PHC format

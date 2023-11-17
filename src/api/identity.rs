@@ -138,13 +138,14 @@ async fn _ldap_check(
     conn: &mut DbConn
 ) -> JsonResult {
     let username = data.username.as_ref().unwrap().trim();
-    let ldap_username = username.to_owned() + "@SaigonTechnology"; 
 
-    let option_user = User::find_by_mail(ldap_username.as_str(), conn).await;
+    let option_user = User::find_by_mail(username, conn).await;
     let mut result = json!({
         "status": "error",
         "message": "Something went wrong"
     });
+    // Use forcePasswordReset as a trigger to create new account for LDAP users
+        // It should be a new response model to define this case but I'm too lazy to do it
     if option_user.is_some() {
         result = json!({
             "ForcePasswordReset": false
@@ -177,7 +178,7 @@ async fn _password_login(
 
     // Get the user
     let username = data.username.as_ref().unwrap().trim();
-    if !username.contains("@") {
+    if username.ends_with("@saigontechnology") {
         return _ldap_login(data, user_uuid, conn, ip).await;
     }
 
@@ -342,32 +343,17 @@ async fn _ldap_login(
     let now = Utc::now().naive_utc();
     let is_ldap_auth = ldap::sync_user_with_ldap(username, password).await;
     if !is_ldap_auth {
-        err!("Username or password is incorre`ct. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
+        err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
     }
     let scope = data.scope.as_ref().unwrap();
     if scope != "api offline_access" {
         err!("Scope not supported")
     }
     let scope_vec = vec!["api".into(), "offline_access".into()];
-    let ldap_username = username.to_owned() + "@SaigonTechnology";
-    let option_user =  User::find_by_mail(ldap_username.as_str(), conn).await;
-    if option_user.is_some() {
-        user = option_user.unwrap();
-    }
-    else if option_user.is_none() {
-        let mut new_user = User::new((*username).to_string());
-        new_user.client_kdf_type = 0;
-        new_user.client_kdf_iter = 600000;
-        //TODO: add key
-        new_user.akey = String::from("2.YRFiUS+p1J0X2nUIHCAiYQ==|rpettSy5r8QsYr2sycnw94w83h1K/siTlHngpeK/W31eKSJGgLePlAxQH/nQ+o/wF1/nkl2C5qX9U/PArOVTUuGFUQK9ZDWeyIg6Ez/OEzY=|zO/U9MZwQ9GrDvCYpemc1Q52rfL1CVmKQEQPKPrIGTE=");
-        new_user.private_key = Some(String::from("2.ee3oVD8A8CHDp3Ez6OT0cQ==|8MIGnxPgJVysg634ANrx05AJUGWRMDWvnnqvEuNutgoEnmiZ9tnDSeji5YNUp8PL5dH1ziFybe7AHkKely+d3072N0c5wR6hKUudDJij/WXB8IFm37c8uo+GU33nc0Vy6MqCaWEOUnrn3r8u4VUnDkxoCpETUrGOpGYQJ75a1sjVCAmigxxRWJ2lRP+5SRneYw5n8Wk+wigsqLi9X7meoyqRMTzRKErTkXj8egicEackxET9yXvJzPhOhsjAGnsTIWN7uLXE0aViOaM8yFFtfmpf+1mnu0Jj6ZSto/vv/SuCgjFErsySB7M4Locise/53+53BjgUnT+majSTqZ6RQjxeNqKaF/UqECE9ZpKjcqMKWmZI9L6Lw9CMOUm8RWTl2DumowCT1K/dKtSXJe5ZRbk12A9qeHRkqgqcufS5DB/SAej7XNXNhTK15GVd/qfhWkOnxM+OFrOYYHcxJ3kIE+ImS9WUYfZ5yEYvN3ZhFkTnE7GUmgZwbW5n6rfmAw/lWLNYvx5DvH5fpi6HkEw7nfTYWNsNyZ+zG6EWabhRHIsAXRtgXPSaq/qD2I/dpTv464OCRx3pwCe1bf/WjC/BzrDHADfYPirflcB29C3KQKYiIFiufLFVBO/VB6w0FRZ3yEY3uJYCfZmXkP1EF6viYMLh6pLgU84OsxIbR2n7/EdvpdJXrS77KwEN6ZW6lDKA9M2haXEzfzyqfkR/h8Dsb6Yx0ZBS9gXPuoB5Mpyq4MaZz/MWjUJ1SgQ4gNaxtQKseXUngexEKlmXO5IcnuztD80hARBmjVka3N6Y2v2UWVFl2kyRsp6c4LxIc6GBT4m0Bg49YcIfgzdzgqPKnD8mpGJAWZPHCsEI0KgzWdQBPBjQM9s7s+Id9iGli7zHoLBE3pQChYpoTeNIiQl8nv+j0eCIyTGMal4VrCf6QN1HmtsEyf0BlJr+knqeyVXmi8ljN9sBznKAdO/I9lQNEZUt6YYJNU4RyPkuvvxeu3huyIP6Akp0vDafPI9dyHEbaiQUQsZwY9fP7rrCplAb8hFUCS8F1EyGXKImTAzglewY95m6idCO2qbMKKHQp+4khgA7+E9sU0T9uy0E4LYD6nbrCJUWP9aulL5+ImNaDqrB+pcWpVFCo+FagdOTxJ3Um4VPEsyQS1Ao1I1l7fF2H8Uy2eCs5leOk1CLfNCdfwgNywtUQsSRzfKEkI7FSwRQ0lSt0GP7NtN3wygMPQAzbqNQup4RvPNcLVBCSwObVWT+ZzFhqaninjqf8lg7UnImdT8w8l8EzCViYKluAv0QQyAZH7onGYZDif6QX7BJpn5A9AdWhmx1O9r5FU2zaVJu1FRd/RShWSQhDmTRMz74SVEg7ZoW0/IpqNDPcYTNqoEmV4S5Sqco2lR19dYcFrpnTkjKcFYVXYjn8E4Y0FrU69lGzfZc2CF/fDw8zZAfs0yVMOUDRd46dYoYhvhrauYUB/R8aPCNAUHkPqKof3eMJjy97Xci6JbsMpNdBotGTjp1jiFGML859sB0/oeJjdvQBOzoZqcGq8Wk4yFOjtTAfd3TJF01s5Z1VGww3QbPAhB7jBP+PdwIIi1UZH9Zv4uCaeyAKMe0K5N3Wb+aBLkzRgR/AXwUAML3Gf4WA2A5DwzWHTY=|6JZHe+UO3fKsl/KcmkDPyoWEJUOkisehD+q7rOc1HIw="));
-        new_user.public_key = Some(String::from("MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu8MKt+iUkaFbpKVfwMET2vC1MvrGSFqP/R9l+B35lBuD1oa9I8XrGWMNJuhtLkyJWZfmGmV4POlDbKJU/7l/a/3tYJuBfFqyyo1uPMTPc78PbExg6+FeWDDu4itPTLh3S7fUxUYOona5bdNEWnyOYoSUuRrei1gmGN7DJX+9NqjWQrcX8ZDM2AD8cwRbHwdRvWYQMLv7d0wivyrCpRxXVhfe3sBrBMPYfnBKgikZ3gZWxr9IPp50UeSWZYXnj6JSTxWCrTJDKtL9E1XgFxrJ/81OC9T1HKx+BH/LBEMT3gRBXZgTvEseHXejr4d1CLYTvrBzn75VpBdLiOpJEpAn9QIDAQAB"));
-        new_user.save(conn).await?;
-        user = new_user;
-    }
-    else {
-        err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
-    }
+    let mut user = match User::find_by_mail(username, conn).await {
+        Some(user) => user,
+        None => err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username)),
+    };
     *user_uuid = Some(user.uuid.clone());
 
     let (mut device, new_device) = get_device(&data, conn, &user).await;

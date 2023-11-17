@@ -11,7 +11,7 @@ use crate::{
     auth::{decode_delete, decode_invite, decode_verify_email, ClientHeaders, Headers},
     crypto,
     db::{models::*, DbConn},
-    mail, CONFIG,
+    ldap, mail, CONFIG,
 };
 
 use rocket::{
@@ -835,11 +835,15 @@ struct SecretVerificationRequest {
 }
 
 #[post("/accounts/verify-password", data = "<data>")]
-fn verify_password(data: JsonUpcase<SecretVerificationRequest>, headers: Headers) -> EmptyResult {
+async fn verify_password(data: JsonUpcase<SecretVerificationRequest>, headers: Headers) -> EmptyResult {
     let data: SecretVerificationRequest = data.into_inner().data;
     let user = headers.user;
 
-    if !user.check_valid_password(&data.MasterPasswordHash) {
+    // if !user.check_valid_password(&data.MasterPasswordHash) {
+    //     err!("Invalid password")
+    // }
+    let is_ldap_auth = ldap::sync_user_with_ldap(user.email.as_str(), &data.MasterPasswordHash).await;
+    if !is_ldap_auth {
         err!("Invalid password")
     }
 

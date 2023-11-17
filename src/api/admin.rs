@@ -51,6 +51,7 @@ pub fn routes() -> Vec<Route> {
         backup_db,
         test_smtp,
         users_overview,
+        invite_user_to_org,
         organizations_overview,
         delete_organization,
         diagnostics,
@@ -466,6 +467,37 @@ async fn resend_user_invite(uuid: &str, _token: AdminToken, mut conn: DbConn) ->
     } else {
         err_code!("User doesn't exist", Status::NotFound.code);
     }
+}
+
+#[derive(Deserialize, Debug)]
+struct OrgInvite {
+    emails: Vec<String>,
+}
+
+#[post("/organizations/<org_uuid>/invite", data = "<data>")]
+async fn invite_user_to_org(
+    org_uuid: &str,
+    data: Json<OrgInvite>,
+    _token: AdminToken,
+    mut conn: DbConn,
+) -> EmptyResult {
+    for email in data.emails.iter() {
+        if let Some(user) = User::find_by_mail(email, &mut conn).await {
+            if let Some(org) = Organization::find_by_uuid(org_uuid, &mut conn).await {
+                print!("Sending of {} invite to {}", org.name, user.email);
+                let mut new_user = UserOrganization::new(user.uuid.clone(), org.uuid.clone());
+                new_user.access_all = false;
+                new_user.atype = UserOrgType::User as i32;
+                new_user.status = UserOrgStatus::Accepted as i32;
+                new_user.save(&mut conn).await?;
+            } else {
+                err_code!("Organization doesn't exist", Status::NotFound.code);
+            }
+        } else {
+            err_code!("User doesn't exist", Status::NotFound.code);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Deserialize, Debug)]
