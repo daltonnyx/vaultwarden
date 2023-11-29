@@ -835,19 +835,21 @@ struct SecretVerificationRequest {
 }
 
 #[post("/accounts/verify-password", data = "<data>")]
-async fn verify_password(data: JsonUpcase<SecretVerificationRequest>, headers: Headers) -> EmptyResult {
+async fn verify_password(data: JsonUpcase<SecretVerificationRequest>, headers: Headers) -> JsonResult {
     let data: SecretVerificationRequest = data.into_inner().data;
     let user = headers.user;
 
     // if !user.check_valid_password(&data.MasterPasswordHash) {
     //     err!("Invalid password")
     // }
-    let is_ldap_auth = ldap::sync_user_with_ldap(user.email.as_str(), &data.MasterPasswordHash).await;
-    if !is_ldap_auth {
-        err!("Invalid password")
-    }
-
-    Ok(())
+    let key = match ldap::sync_user_with_ldap(user.email.as_str(), &data.MasterPasswordHash).await {
+        Some(key) => key,
+        None => err!("Invalid password"),
+    };
+    let result = json!({
+        "mkey": key,
+    });
+    Ok(Json(result))
 }
 
 async fn _api_key(

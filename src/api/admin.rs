@@ -1,3 +1,4 @@
+use base64;
 use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -18,7 +19,7 @@ use crate::{
     config::ConfigBuilder,
     db::{backup_database, get_sql_server_version, models::*, DbConn, DbConnType},
     error::{Error, MapResult},
-    mail,
+    ldap, mail,
     util::{
         docker_base_image, format_naive_datetime_local, get_display_size, get_reqwest_client, is_running_in_docker,
     },
@@ -481,21 +482,40 @@ async fn invite_user_to_org(
     _token: AdminToken,
     mut conn: DbConn,
 ) -> EmptyResult {
+    let org = match Organization::find_by_uuid(org_uuid, &mut conn).await {
+        Some(org) => org,
+        None => err!("Organization doesn't exist"),
+    };
+    // //find owner of the org
+    // let owner_org = UserOrganization::find_by_org_and_type(&org.uuid, UserOrgType::Owner, &mut conn).await;
+    // if owner_org.len() == 0 {
+    //     err_code!("Organization doesn't have owner", Status::NotFound.code);
+    // }
+    // let owner = match User::find_by_uuid(owner_org[0].user_uuid.as_str(), &mut conn).await {
+    //     Some(user) => user,
+    //     None => err!("Owner doesn't exist"),
+    // };
+    // let owner_key = ldap::create_master_key(&owner.email, &(String::new()));
+    // let dec_owner_key = match base64::decode(owner_key.split(".").collect::<Vec<&str>>()[0]) {
+    //     Ok(key) => key,
+    //     Err(e) => err!("Error decoding owner key"),
+    // };
+    //
+    // let org_dec_key = ldap::rsa_decrypt(dec_owner_key, owner_org[0].akey);
+
     for email in data.emails.iter() {
-        if let Some(user) = User::find_by_mail(email, &mut conn).await {
-            if let Some(org) = Organization::find_by_uuid(org_uuid, &mut conn).await {
-                print!("Sending of {} invite to {}", org.name, user.email);
-                let mut new_user = UserOrganization::new(user.uuid.clone(), org.uuid.clone());
-                new_user.access_all = false;
-                new_user.atype = UserOrgType::User as i32;
-                new_user.status = UserOrgStatus::Accepted as i32;
-                new_user.save(&mut conn).await?;
-            } else {
-                err_code!("Organization doesn't exist", Status::NotFound.code);
-            }
-        } else {
-            err_code!("User doesn't exist", Status::NotFound.code);
-        }
+        let user = match User::find_by_mail(email, &mut conn).await {
+            Some(user) => user,
+            None => err!("User doesn't exist"),
+        };
+        print!("Sending of {} invite to {}", org.name, user.email);
+        let mut new_user = UserOrganization::new(user.uuid.clone(), org.uuid.clone());
+        new_user.access_all = false;
+        new_user.atype = UserOrgType::User as i32;
+        new_user.status = UserOrgStatus::Accepted as i32;
+        // Create akey by rsa encrypt orgKey? with user public key
+        //
+        new_user.save(&mut conn).await?;
     }
     Ok(())
 }

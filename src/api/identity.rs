@@ -1,6 +1,6 @@
 use chrono::Utc;
 use num_traits::FromPrimitive;
-use rocket::serde::json::{Json, self};
+use rocket::serde::json::{self, Json};
 use rocket::{
     form::{Form, FromForm},
     Route,
@@ -17,7 +17,7 @@ use crate::{
     auth::{generate_organization_api_key_login_claims, ClientHeaders, ClientIp},
     db::{models::*, DbConn},
     error::MapResult,
-    mail, util, CONFIG, ldap
+    ldap, mail, util, CONFIG,
 };
 
 pub fn routes() -> Vec<Route> {
@@ -34,12 +34,6 @@ async fn login(data: Form<ConnectData>, client_header: ClientHeaders, mut conn: 
         "refresh_token" => {
             _check_is_some(&data.refresh_token, "refresh_token cannot be blank")?;
             _refresh_login(data, &mut conn).await
-        }
-        "ldap_check" => {
-            _check_is_some(&data.username, "username cannot be blank")?;
-            _check_is_some(&data.password, "password cannot be blank")?;
-
-            _ldap_check(data, &mut conn).await
         }
         "password" => {
             _check_is_some(&data.client_id, "client_id cannot be blank")?;
@@ -131,33 +125,6 @@ async fn _refresh_login(data: ConnectData, conn: &mut DbConn) -> JsonResult {
     });
 
     Ok(Json(result))
-}
-
-async fn _ldap_check(
-    data: ConnectData,
-    conn: &mut DbConn
-) -> JsonResult {
-    let username = data.username.as_ref().unwrap().trim();
-
-    let option_user = User::find_by_mail(username, conn).await;
-    let mut result = json!({
-        "status": "error",
-        "message": "Something went wrong"
-    });
-    // Use forcePasswordReset as a trigger to create new account for LDAP users
-        // It should be a new response model to define this case but I'm too lazy to do it
-    if option_user.is_some() {
-        result = json!({
-            "ForcePasswordReset": false
-        });
-    }
-    else if option_user.is_none() {
-        result = json!({
-            "ForcePasswordReset": true,
-        });
-    }
-    
-    return Ok(Json(result));
 }
 
 async fn _password_login(
@@ -335,22 +302,23 @@ async fn _ldap_login(
     data: ConnectData,
     user_uuid: &mut Option<String>,
     conn: &mut DbConn,
-    ip: &ClientIp, 
+    ip: &ClientIp,
 ) -> JsonResult {
     let username = data.username.as_ref().unwrap().trim();
     let password = data.password.as_ref().unwrap();
     let user: User;
     let now = Utc::now().naive_utc();
-    let is_ldap_auth = ldap::sync_user_with_ldap(username, password).await;
-    if !is_ldap_auth {
-        err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username))
-    }
+    let master_key = match ldap::sync_user_with_ldap(username, password).await {
+        Some(masterKey) => masterKey,
+        None => err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username)),
+    };
+
     let scope = data.scope.as_ref().unwrap();
     if scope != "api offline_access" {
         err!("Scope not supported")
     }
     let scope_vec = vec!["api".into(), "offline_access".into()];
-    let mut user = match User::find_by_mail(username, conn).await {
+    let user = match User::find_by_mail(username, conn).await {
         Some(user) => user,
         None => err!("Username or password is incorrect. Try again", format!("IP: {}. Username: {}.", ip.ip, username)),
     };
@@ -382,6 +350,7 @@ async fn _ldap_login(
 
     let mut result = json!({
         "access_token": access_token,
+        "mkey": master_key,
         "expires_in": expires_in,
         "token_type": "Bearer",
         "refresh_token": device.refresh_token,

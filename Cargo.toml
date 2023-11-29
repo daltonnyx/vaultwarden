@@ -213,6 +213,7 @@ rand_core = { version = "0.6", features = ["std"] }
 hex-literal = "0.4.1"
 sha2 = "0.10.7"
 crypto = "0.5.1"
+base64 = "0.21.5"
 [patch.crates-io]
 rocket = { git = 'https://github.com/SergioBenitez/Rocket', rev = 'ce441b5f46fdf5cd99cb32b8b8638835e4c2a5fa' } # v0.5 branch
 # rocket_ws = { git = 'https://github.com/SergioBenitez/Rocket', rev = 'ce441b5f46fdf5cd99cb32b8b8638835e4c2a5fa' } # v0.5 branch
