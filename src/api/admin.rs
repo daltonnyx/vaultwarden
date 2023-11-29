@@ -186,12 +186,11 @@ fn post_admin_login(data: Form<LoginForm>, cookies: &CookieJar<'_>, ip: ClientIp
         let claims = generate_admin_claims();
         let jwt = encode_jwt(&claims);
 
-        let cookie = Cookie::build(COOKIE_NAME, jwt)
+        let cookie = Cookie::build((COOKIE_NAME, jwt))
             .path(admin_path())
             .max_age(rocket::time::Duration::minutes(CONFIG.admin_session_lifetime()))
             .same_site(SameSite::Strict)
-            .http_only(true)
-            .finish();
+            .http_only(true);
 
         cookies.add(cookie);
         if let Some(redirect) = redirect {
@@ -281,12 +280,11 @@ async fn get_user_or_404(uuid: &str, conn: &mut DbConn) -> ApiResult<User> {
 #[post("/invite", data = "<data>")]
 async fn invite_user(data: Json<InviteData>, _token: AdminToken, mut conn: DbConn) -> JsonResult {
     let data: InviteData = data.into_inner();
-    let email = data.email.clone();
     if User::find_by_mail(&data.email, &mut conn).await.is_some() {
         err_code!("User already exists", Status::Conflict.code)
     }
 
-    let mut user = User::new(email);
+    let mut user = User::new(data.email);
 
     async fn _generate_invite(user: &User, conn: &mut DbConn) -> EmptyResult {
         if CONFIG.mail_enabled() {
@@ -316,7 +314,7 @@ async fn test_smtp(data: Json<InviteData>, _token: AdminToken) -> EmptyResult {
 
 #[get("/logout")]
 fn logout(cookies: &CookieJar<'_>) -> Redirect {
-    cookies.remove(Cookie::build(COOKIE_NAME, "").path(admin_path()).finish());
+    cookies.remove(Cookie::build(COOKIE_NAME).path(admin_path()));
     Redirect::to(admin_path())
 }
 
@@ -328,6 +326,10 @@ async fn get_users_json(_token: AdminToken, mut conn: DbConn) -> Json<Value> {
         let mut usr = u.to_json(&mut conn).await;
         usr["UserEnabled"] = json!(u.enabled);
         usr["CreatedAt"] = json!(format_naive_datetime_local(&u.created_at, DT_FMT));
+        usr["LastActive"] = match u.last_active(&mut conn).await {
+            Some(dt) => json!(format_naive_datetime_local(&dt, DT_FMT)),
+            None => json!(None::<String>),
+        };
         users_json.push(usr);
     }
 
@@ -835,16 +837,16 @@ impl<'r> FromRequest<'r> for AdminToken {
                     if requested_page.is_empty() {
                         return Outcome::Forward(Status::Unauthorized);
                     } else {
-                        return Outcome::Failure((Status::Unauthorized, "Unauthorized"));
+                        return Outcome::Error((Status::Unauthorized, "Unauthorized"));
                     }
                 }
             };
 
             if decode_admin(access_token).is_err() {
                 // Remove admin cookie
-                cookies.remove(Cookie::build(COOKIE_NAME, "").path(admin_path()).finish());
+                cookies.remove(Cookie::build(COOKIE_NAME).path(admin_path()));
                 error!("Invalid or expired admin JWT. IP: {}.", &ip.ip);
-                return Outcome::Failure((Status::Unauthorized, "Session expired"));
+                return Outcome::Error((Status::Unauthorized, "Session expired"));
             }
 
             Outcome::Success(Self {

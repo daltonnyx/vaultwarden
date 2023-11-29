@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{
     api::{
         core::log_user_event, register_push_device, unregister_push_device, AnonymousNotify, EmptyResult, JsonResult,
-        JsonUpcase, Notify, NumberOrString, PasswordData, UpdateType,
+        JsonUpcase, Notify, NumberOrString, PasswordOrOtpData, UpdateType,
     },
     auth::{decode_delete, decode_invite, decode_verify_email, ClientHeaders, Headers},
     crypto,
@@ -346,7 +346,7 @@ async fn post_password(
 
     let save_result = user.save(&mut conn).await;
 
-    // Prevent loging out the client where the user requested this endpoint from.
+    // Prevent logging out the client where the user requested this endpoint from.
     // If you do logout the user it will causes issues at the client side.
     // Adding the device uuid will prevent this.
     nt.send_logout(&user, Some(headers.device.uuid)).await;
@@ -493,7 +493,7 @@ async fn post_rotatekey(data: JsonUpcase<KeyData>, headers: Headers, mut conn: D
 
     let save_result = user.save(&mut conn).await;
 
-    // Prevent loging out the client where the user requested this endpoint from.
+    // Prevent logging out the client where the user requested this endpoint from.
     // If you do logout the user it will causes issues at the client side.
     // Adding the device uuid will prevent this.
     nt.send_logout(&user, Some(headers.device.uuid)).await;
@@ -503,17 +503,15 @@ async fn post_rotatekey(data: JsonUpcase<KeyData>, headers: Headers, mut conn: D
 
 #[post("/accounts/security-stamp", data = "<data>")]
 async fn post_sstamp(
-    data: JsonUpcase<PasswordData>,
+    data: JsonUpcase<PasswordOrOtpData>,
     headers: Headers,
     mut conn: DbConn,
     nt: Notify<'_>,
 ) -> EmptyResult {
-    let data: PasswordData = data.into_inner().data;
+    let data: PasswordOrOtpData = data.into_inner().data;
     let mut user = headers.user;
 
-    if !user.check_valid_password(&data.MasterPasswordHash) {
-        err!("Invalid password")
-    }
+    data.validate(&user, true, &mut conn).await?;
 
     Device::delete_all_by_user(&user.uuid, &mut conn).await?;
     user.reset_security_stamp();
@@ -533,6 +531,10 @@ struct EmailTokenData {
 
 #[post("/accounts/email-token", data = "<data>")]
 async fn post_email_token(data: JsonUpcase<EmailTokenData>, headers: Headers, mut conn: DbConn) -> EmptyResult {
+    if !CONFIG.email_change_allowed() {
+        err!("Email change is not allowed.");
+    }
+
     let data: EmailTokenData = data.into_inner().data;
     let mut user = headers.user;
 
@@ -579,6 +581,10 @@ async fn post_email(
     mut conn: DbConn,
     nt: Notify<'_>,
 ) -> EmptyResult {
+    if !CONFIG.email_change_allowed() {
+        err!("Email change is not allowed.");
+    }
+
     let data: ChangeEmailData = data.into_inner().data;
     let mut user = headers.user;
 
@@ -728,18 +734,16 @@ async fn post_delete_recover_token(data: JsonUpcase<DeleteRecoverTokenData>, mut
 }
 
 #[post("/accounts/delete", data = "<data>")]
-async fn post_delete_account(data: JsonUpcase<PasswordData>, headers: Headers, conn: DbConn) -> EmptyResult {
+async fn post_delete_account(data: JsonUpcase<PasswordOrOtpData>, headers: Headers, conn: DbConn) -> EmptyResult {
     delete_account(data, headers, conn).await
 }
 
 #[delete("/accounts", data = "<data>")]
-async fn delete_account(data: JsonUpcase<PasswordData>, headers: Headers, mut conn: DbConn) -> EmptyResult {
-    let data: PasswordData = data.into_inner().data;
+async fn delete_account(data: JsonUpcase<PasswordOrOtpData>, headers: Headers, mut conn: DbConn) -> EmptyResult {
+    let data: PasswordOrOtpData = data.into_inner().data;
     let user = headers.user;
 
-    if !user.check_valid_password(&data.MasterPasswordHash) {
-        err!("Invalid password")
-    }
+    data.validate(&user, true, &mut conn).await?;
 
     user.delete(&mut conn).await
 }
@@ -852,20 +856,13 @@ async fn verify_password(data: JsonUpcase<SecretVerificationRequest>, headers: H
     Ok(Json(result))
 }
 
-async fn _api_key(
-    data: JsonUpcase<SecretVerificationRequest>,
-    rotate: bool,
-    headers: Headers,
-    mut conn: DbConn,
-) -> JsonResult {
+async fn _api_key(data: JsonUpcase<PasswordOrOtpData>, rotate: bool, headers: Headers, mut conn: DbConn) -> JsonResult {
     use crate::util::format_date;
 
-    let data: SecretVerificationRequest = data.into_inner().data;
+    let data: PasswordOrOtpData = data.into_inner().data;
     let mut user = headers.user;
 
-    if !user.check_valid_password(&data.MasterPasswordHash) {
-        err!("Invalid password")
-    }
+    data.validate(&user, true, &mut conn).await?;
 
     if rotate || user.api_key.is_none() {
         user.api_key = Some(crypto::generate_api_key());
@@ -880,12 +877,12 @@ async fn _api_key(
 }
 
 #[post("/accounts/api-key", data = "<data>")]
-async fn api_key(data: JsonUpcase<SecretVerificationRequest>, headers: Headers, conn: DbConn) -> JsonResult {
+async fn api_key(data: JsonUpcase<PasswordOrOtpData>, headers: Headers, conn: DbConn) -> JsonResult {
     _api_key(data, false, headers, conn).await
 }
 
 #[post("/accounts/rotate-api-key", data = "<data>")]
-async fn rotate_api_key(data: JsonUpcase<SecretVerificationRequest>, headers: Headers, conn: DbConn) -> JsonResult {
+async fn rotate_api_key(data: JsonUpcase<PasswordOrOtpData>, headers: Headers, conn: DbConn) -> JsonResult {
     _api_key(data, true, headers, conn).await
 }
 
@@ -919,26 +916,23 @@ impl<'r> FromRequest<'r> for KnownDevice {
             let email_bytes = match data_encoding::BASE64URL_NOPAD.decode(email_b64.as_bytes()) {
                 Ok(bytes) => bytes,
                 Err(_) => {
-                    return Outcome::Failure((
-                        Status::BadRequest,
-                        "X-Request-Email value failed to decode as base64url",
-                    ));
+                    return Outcome::Error((Status::BadRequest, "X-Request-Email value failed to decode as base64url"));
                 }
             };
             match String::from_utf8(email_bytes) {
                 Ok(email) => email,
                 Err(_) => {
-                    return Outcome::Failure((Status::BadRequest, "X-Request-Email value failed to decode as UTF-8"));
+                    return Outcome::Error((Status::BadRequest, "X-Request-Email value failed to decode as UTF-8"));
                 }
             }
         } else {
-            return Outcome::Failure((Status::BadRequest, "X-Request-Email value is required"));
+            return Outcome::Error((Status::BadRequest, "X-Request-Email value is required"));
         };
 
         let uuid = if let Some(uuid) = req.headers().get_one("X-Device-Identifier") {
             uuid.to_string()
         } else {
-            return Outcome::Failure((Status::BadRequest, "X-Device-Identifier value is required"));
+            return Outcome::Error((Status::BadRequest, "X-Device-Identifier value is required"));
         };
 
         Outcome::Success(KnownDevice {
@@ -976,10 +970,10 @@ async fn put_device_token(uuid: &str, data: JsonUpcase<PushToken>, headers: Head
         device.push_uuid = Some(uuid::Uuid::new_v4().to_string());
     }
     if let Err(e) = device.save(&mut conn).await {
-        err!(format!("An error occured while trying to save the device push token: {e}"));
+        err!(format!("An error occurred while trying to save the device push token: {e}"));
     }
     if let Err(e) = register_push_device(headers.user.uuid, device).await {
-        err!(format!("An error occured while proceeding registration of a device: {e}"));
+        err!(format!("An error occurred while proceeding registration of a device: {e}"));
     }
 
     Ok(())
